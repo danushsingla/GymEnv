@@ -37,11 +37,11 @@ class PongEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        observation = self._get_obs()
-        info = self._get_info()
-
         self._paddle_location = (400, 0)
         self._ball_location = (0, 0)
+
+        observation = self._get_obs()
+        info = self._get_info()
 
         # Set up the screen
         self._setup_render_frame()
