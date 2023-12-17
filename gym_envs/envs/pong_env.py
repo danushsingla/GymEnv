@@ -5,15 +5,18 @@ from gym import spaces
 import turtle
 import numpy as np
 import random
+import time
 
 class PongEnv(gym.Env):
     metadata = {'render_modes': ['human']}
 
-    def __init__(self, render_mode=None):
+    def __init__(self, render_mode="human"):
         # print("Environment initialized")
         self.width = 1000
         self.height = 600
         self.hitPaddle = False
+
+        self.start_time = time.perf_counter()
 
         self.observation_space = spaces.Dict({
             'paddle': spaces.Box(-self.height, self.height, shape=(2,)),
@@ -76,9 +79,9 @@ class PongEnv(gym.Env):
         # Update paddle location in frame (only has to change y since x always remains unchanged for the paddle)
         self.right_pad.sety(self._paddle_location[1])
 
-        # If the ball reaches the right end of the screen then terminate
+        # If the ball reaches the right end of the screen or game runtime is more than 30 seconds then terminate
         terminated = False
-        if self._ball_location[0] > 500:
+        if self._ball_location[0] > 500 or time.perf_counter() - self.start_time >= 180:
             terminated = True
 
         # Reward is 1 if the ball hits the paddle, 0 otherwise
@@ -164,10 +167,10 @@ class PongEnv(gym.Env):
             self.hit_ball.dx *= -1
 
         if self.right_pad.ycor() < -260:
-            self.right_pad.sety(-260)
+            self.right_pad.sety(-240)
 
         if self.right_pad.ycor() > 260:
-            self.right_pad.sety(260)
+            self.right_pad.sety(240)
 
         # If the ball misses the paddle, then reset the ball
         if self.hit_ball.xcor() > 500:
