@@ -16,8 +16,6 @@ class PongEnv(gym.Env):
         self.height = 600
         self.hitPaddle = False
 
-        self.start_time = time.perf_counter()
-
         self.observation_space = spaces.Dict({
             'paddle': spaces.Box(-self.height, self.height, shape=(2,)),
             'ball': spaces.Box(-self.width, self.width, shape=(2,))
@@ -81,7 +79,7 @@ class PongEnv(gym.Env):
 
         # If the ball reaches the right end of the screen or game runtime is more than 30 seconds then terminate
         terminated = False
-        if self._ball_location[0] > 500 or time.perf_counter() - self.start_time >= 180:
+        if self._ball_location[0] > 500:
             terminated = True
 
         # Reward is 1 if the ball hits the paddle, 0 otherwise
@@ -166,11 +164,13 @@ class PongEnv(gym.Env):
             self.hit_ball.setx(-500)
             self.hit_ball.dx *= -1
 
-        if self.right_pad.ycor() < -260:
-            self.right_pad.sety(-240)
+        if self.right_pad.ycor() < -230:
+            self._paddle_location[1] = -230
+            self.right_pad.sety(-230)
 
-        if self.right_pad.ycor() > 260:
-            self.right_pad.sety(240)
+        if self.right_pad.ycor() > 230:
+            self._paddle_location[1] = 230
+            self.right_pad.sety(230)
 
         # If the ball misses the paddle, then reset the ball
         if self.hit_ball.xcor() > 500:
