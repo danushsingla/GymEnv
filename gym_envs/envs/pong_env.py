@@ -4,25 +4,30 @@ import gym
 from gym import spaces
 import turtle
 import numpy as np
+import random
 
 class PongEnv(gym.Env):
-    metadata = {'render.modes': ['human']}
+    metadata = {'render_modes': ['human']}
 
     def __init__(self, render_mode=None):
+        # print("Environment initialized")
         self.width = 1000
         self.height = 600
         self.hitPaddle = False
 
         self.observation_space = spaces.Dict({
-            'paddle': spaces.Box(-self.height/2, self.height/2, shape=(2,)),
-            'ball': spaces.Box(-self.width/2, self.width/2, shape=(2,))
+            'paddle': spaces.Box(-self.height, self.height, shape=(2,)),
+            'ball': spaces.Box(-self.width, self.width, shape=(2,))
         })
 
-        self.action_space = spaces.Discrete(2)
+        self.action_space = spaces.Discrete(3)
+        self.sketch = None
+        self.setup = True
 
         self._action_to_direction = {
             0: np.array([0, 20]),
             1: np.array([0, -20]),
+            2: np.array([0, 0]),
         }
 
         assert render_mode is None or render_mode in self.metadata["render_modes"]
@@ -37,14 +42,25 @@ class PongEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        self._paddle_location = (400, 0)
-        self._ball_location = (0, 0)
+        if self.sketch is not None:
+            self.sketch.clear()
+
+        self._paddle_location = np.array([400, 0])
+        self._ball_location = np.array([0, 0])
+        self.hitPaddle = False
+        self.hits = 0
 
         observation = self._get_obs()
         info = self._get_info()
 
         # Set up the screen
-        self._setup_render_frame()
+        if self.setup:
+            self._setup_render_frame()
+            self.setup = False
+
+        # Change velocity of ball every reset
+        self.hit_ball.dx = random.uniform(7, 15)
+        self.hit_ball.dy = - random.uniform(5, 15)
 
         # Initialize paddle and ball locations in render frame
         if self.render_mode == "human":
@@ -55,14 +71,15 @@ class PongEnv(gym.Env):
     def step(self, action):
         # Perform action and update vector
         direction = self._action_to_direction[action]
-        self._paddle_location = np.clip(
-            self._paddle_location + direction, 0, 1)
+        self._paddle_location = self._paddle_location + direction
 
         # Update paddle location in frame (only has to change y since x always remains unchanged for the paddle)
         self.right_pad.sety(self._paddle_location[1])
 
-        # If the ball reaches the right end of the screen, then terminate
-        terminated = self._ball_location[0] > 500
+        # If the ball reaches the right end of the screen then terminate
+        terminated = False
+        if self._ball_location[0] > 500:
+            terminated = True
 
         # Reward is 1 if the ball hits the paddle, 0 otherwise
         reward = 1 if (360 < self._ball_location[0] < 370) and \
@@ -75,7 +92,6 @@ class PongEnv(gym.Env):
         # If the render mode is human then run the turtle frame
         if self.render_mode == "human":
             self._render_frame()
-
         return observation, reward, terminated, False, info
 
     def render(self):
@@ -104,11 +120,11 @@ class PongEnv(gym.Env):
         self.hit_ball.color("blue")
         self.hit_ball.penup()
         self.hit_ball.goto(self._ball_location[0], self._ball_location[1])
-        self.hit_ball.dx = 5
-        self.hit_ball.dy = -5
+        self.hit_ball.dx = random.uniform(7, 15) # 5
+        self.hit_ball.dy = - random.uniform(5, 15)  # -5
 
         # Initialize the score
-        self.misses = 0
+        self.hits = 0
 
         # Displays the score
         self.sketch = turtle.Turtle()
@@ -117,22 +133,8 @@ class PongEnv(gym.Env):
         self.sketch.penup()
         self.sketch.hideturtle()
         self.sketch.goto(0, 260)
-        self.sketch.write("Misses: 0",
+        self.sketch.write(f"Hits: {self.hits}",
                      align="center", font=("Courier", 24, "normal"))
-
-        self.sc.listen()
-        self.sc.onkeypress(self._paddlebup, "Up")
-        self.sc.onkeypress(self._paddlebdown, "Down")
-
-    def _paddlebup(self):
-        y = self.right_pad.ycor()
-        y += 20
-        self.right_pad.sety(y)
-
-    def _paddlebdown(self):
-        y = self.right_pad.ycor()
-        y -= 20
-        self.right_pad.sety(y)
 
     def _render_frame(self):
         # Updates the screen very frame
@@ -142,8 +144,11 @@ class PongEnv(gym.Env):
         self.hit_ball.setx(self.hit_ball.xcor() + self.hit_ball.dx)
         self.hit_ball.sety(self.hit_ball.ycor() + self.hit_ball.dy)
 
+        # Sets the new coordinates of the paddle based on the action performed
+        self.right_pad.sety(self._paddle_location[1])
+
         # Update ball location in frame
-        self._ball_location = (self.hit_ball.xcor(), self.hit_ball.ycor())
+        self._ball_location = np.array([self.hit_ball.xcor(), self.hit_ball.ycor()])
 
         # Checking borders
         if self.hit_ball.ycor() > 280:
@@ -158,20 +163,27 @@ class PongEnv(gym.Env):
             self.hit_ball.setx(-500)
             self.hit_ball.dx *= -1
 
-        # If the ball misses the paddle, then reset the ball and update the score
+        if self.right_pad.ycor() < -260:
+            self.right_pad.sety(-260)
+
+        if self.right_pad.ycor() > 260:
+            self.right_pad.sety(260)
+
+        # If the ball misses the paddle, then reset the ball
         if self.hit_ball.xcor() > 500:
             self.hit_ball.goto(0, 0)
             self.hit_ball.dy *= -1
-            self.misses += 1
-            self.sketch.clear()
-            self.sketch.write("Misses: {}".format(
-                self.misses), align="center",
-                font=("Courier", 24, "normal"))
 
-        # Paddle ball collision
-        if (self.hit_ball.xcor() > 360 and self.hit_ball.xcor() < 370) and (self.hit_ball.ycor() < self.right_pad.ycor() + 40 and
-             self.hit_ball.ycor() > self.right_pad.ycor() - 40):
+        # Paddle ball collision and updating score
+        if (self.hit_ball.xcor() > 355 and self.hit_ball.xcor() < 375) and (self.hit_ball.ycor() < self.right_pad.ycor() + 60 and
+             self.hit_ball.ycor() > self.right_pad.ycor() - 60):
             self.hitPaddle = True
-            self.hit_ball.setx(360)
+            self.sketch.clear()
+            self.hit_ball.setx(355)
             self.hit_ball.dx *= -1
+            self.hits += 1
+
+        # Update the scoreboard
+        self.sketch.write(f"Hits: {self.hits}",
+                          align="center", font=("Courier", 24, "normal"))
 
